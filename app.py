@@ -88,7 +88,7 @@ if not st.session_state["conversacion_finalizada"]:
             if len(st.session_state["mensajes"]) >= 6:
                 st.session_state["conversacion_finalizada"] = True
 
-            st.rerun()
+            st.experimental_rerun()
 
 # Mostrar mensaje final si corresponde
 if st.session_state["conversacion_finalizada"]:
