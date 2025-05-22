@@ -1,24 +1,23 @@
 import streamlit as st
 import openai
 
-# Inicializa OpenAI con secretos
+# Inicializa OpenAI con claves desde secrets
 openai.api_key = st.secrets["OPENAI_API_KEY"]
 assistant_id = st.secrets["ASSISTANT_ID"]
-
 client = openai.Client()
 
-# Crea o recupera el hilo de conversación y variables de estado
+# Estado inicial
 if "thread_id" not in st.session_state:
     thread = client.beta.threads.create()
     st.session_state["thread_id"] = thread.id
-    st.session_state["mensajes"] = []  # historial de conversación
+    st.session_state["mensajes"] = []
     st.session_state["score"] = None
     st.session_state["conversacion_finalizada"] = False
 
 st.title("🛍️ Agente de Reseñas de Productos")
 st.markdown("Por favor, completa los datos del cliente y el producto para comenzar:")
 
-# Formulario inicial
+# Formulario de inicio
 with st.form("datos_form"):
     nombre = st.text_input("Nombre del cliente:")
     url = st.text_input("URL del producto:")
@@ -34,7 +33,7 @@ if submitted and nombre and url:
         f"para entender su experiencia y resaltar lo bueno del producto."
     )
 
-    # Enviar mensaje inicial al asistente
+    # Enviar mensaje inicial
     client.beta.threads.messages.create(
         thread_id=st.session_state["thread_id"],
         role="user",
@@ -50,7 +49,7 @@ if submitted and nombre and url:
     respuesta = mensajes.data[0].content[0].text.value
     st.session_state["mensajes"].append(("agente", respuesta))
 
-# Mostrar historial de conversación
+# Mostrar historial
 st.markdown("---")
 st.subheader("🗣️ Conversación")
 
@@ -60,13 +59,12 @@ for rol, mensaje in st.session_state["mensajes"]:
     else:
         st.markdown(f"🧑 **Tú**: {mensaje}")
 
-# Solo mostrar input si la conversación no se ha finalizado
+# Input continuo si no se ha terminado
 if not st.session_state["conversacion_finalizada"]:
     user_input = st.text_input("Tu respuesta:", key="respuesta_input")
 
     if st.button("Enviar respuesta"):
         if user_input.strip() != "":
-            # Guardar mensaje del usuario
             st.session_state["mensajes"].append(("usuario", user_input))
 
             client.beta.threads.messages.create(
@@ -84,13 +82,14 @@ if not st.session_state["conversacion_finalizada"]:
             respuesta = mensajes.data[0].content[0].text.value
             st.session_state["mensajes"].append(("agente", respuesta))
 
-            # Condición simple para cerrar después de varios intercambios (puedes ajustarlo)
+            # Finalizar si hay suficientes mensajes (ajustable)
             if len(st.session_state["mensajes"]) >= 6:
                 st.session_state["conversacion_finalizada"] = True
 
-            st.experimental_rerun()
+            # Aviso simple si no se actualiza automáticamente
+            st.markdown("ℹ️ Si no ves una nueva respuesta, puedes recargar la página manualmente.")
 
-# Mostrar mensaje final si corresponde
+# Mensaje de cierre
 if st.session_state["conversacion_finalizada"]:
     st.markdown("---")
     st.subheader("✅ Conversación finalizada")
@@ -101,4 +100,5 @@ if st.session_state["conversacion_finalizada"]:
     elif st.session_state["score"] <= 2:
         st.error("😔 Lamentamos que tu experiencia no haya sido positiva. "
                  "Tu opinión ha sido derivada a nuestro equipo de atención al cliente para ayudarte a resolver el problema.")
+
 
