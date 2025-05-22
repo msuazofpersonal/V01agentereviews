@@ -1,12 +1,12 @@
 import streamlit as st
 import openai
 
-# Inicializa OpenAI
+# Load secrets
 openai.api_key = st.secrets["OPENAI_API_KEY"]
 assistant_id = st.secrets["ASSISTANT_ID"]
 client = openai.Client()
 
-# Inicializa variables de estado
+# Set up session state
 if "thread_id" not in st.session_state:
     thread = client.beta.threads.create()
     st.session_state["thread_id"] = thread.id
@@ -46,11 +46,15 @@ if submitted and nombre and url:
 
     mensajes = client.beta.threads.messages.list(thread_id=st.session_state["thread_id"])
 
-    # Buscar última respuesta válida del asistente
+    # Get latest assistant message
     respuesta = None
-    for mensaje in mensajes.data:
+    for mensaje in reversed(mensajes.data):
         if mensaje.role == "assistant" and mensaje.content:
-            respuesta = mensaje.content[0].text.value
+            for item in mensaje.content:
+                if item.type == "text":
+                    respuesta = item.text.value
+                    break
+        if respuesta:
             break
 
     if respuesta:
@@ -58,7 +62,7 @@ if submitted and nombre and url:
     else:
         st.session_state["mensajes"].append(("agente", "⚠️ El asistente no entregó una respuesta. Intenta recargar."))
 
-# Mostrar historial
+# Mostrar historial de conversación
 st.markdown("---")
 st.subheader("🗣️ Conversación")
 
@@ -68,7 +72,7 @@ for rol, mensaje in st.session_state["mensajes"]:
     else:
         st.markdown(f"🧑 **Tú**: {mensaje}")
 
-# Entrada de usuario mientras la conversación siga activa
+# Input de usuario si la conversación sigue activa
 if not st.session_state["conversacion_finalizada"]:
     user_input = st.text_input("Tu respuesta:", key="respuesta_input")
 
@@ -89,11 +93,15 @@ if not st.session_state["conversacion_finalizada"]:
 
             mensajes = client.beta.threads.messages.list(thread_id=st.session_state["thread_id"])
 
-            # Buscar última respuesta válida del asistente
+            # Get latest assistant message
             respuesta = None
-            for mensaje in mensajes.data:
+            for mensaje in reversed(mensajes.data):
                 if mensaje.role == "assistant" and mensaje.content:
-                    respuesta = mensaje.content[0].text.value
+                    for item in mensaje.content:
+                        if item.type == "text":
+                            respuesta = item.text.value
+                            break
+                if respuesta:
                     break
 
             if respuesta:
@@ -101,12 +109,13 @@ if not st.session_state["conversacion_finalizada"]:
             else:
                 st.session_state["mensajes"].append(("agente", "⚠️ El asistente no entregó una respuesta. Intenta recargar."))
 
+            # Close after enough turns (adjust as needed)
             if len(st.session_state["mensajes"]) >= 6:
                 st.session_state["conversacion_finalizada"] = True
 
             st.markdown("ℹ️ Si no ves una nueva respuesta, puedes recargar la página manualmente.")
 
-# Mensaje final según puntaje
+# Mensaje de cierre según puntaje
 if st.session_state["conversacion_finalizada"]:
     st.markdown("---")
     st.subheader("✅ Conversación finalizada")
@@ -117,3 +126,4 @@ if st.session_state["conversacion_finalizada"]:
     elif st.session_state["score"] <= 2:
         st.error("😔 Lamentamos que tu experiencia no haya sido positiva. "
                  "Tu opinión ha sido derivada a nuestro equipo de atención al cliente para ayudarte a resolver el problema.")
+
