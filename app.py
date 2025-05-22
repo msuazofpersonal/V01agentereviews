@@ -45,9 +45,20 @@ if submitted and nombre and url:
         assistant_id=assistant_id
     )
 
-    mensajes = client.beta.threads.messages.list(thread_id=st.session_state["thread_id"])
-    respuesta = mensajes.data[0].content[0].text.value
-    st.session_state["mensajes"].append(("agente", respuesta))
+        mensajes = client.beta.threads.messages.list(thread_id=st.session_state["thread_id"])
+        
+        # Buscar el último mensaje del asistente que tenga contenido de texto
+        respuesta = None
+        for mensaje in mensajes.data:
+            if mensaje.role == "assistant" and mensaje.content:
+                respuesta = mensaje.content[0].text.value
+                break
+        
+        if respuesta:
+            st.session_state["mensajes"].append(("agente", respuesta))
+        else:
+            st.session_state["mensajes"].append(("agente", "⚠️ El asistente no entregó una respuesta. Intenta recargar."))
+
 
 # Mostrar historial
 st.markdown("---")
@@ -79,8 +90,19 @@ if not st.session_state["conversacion_finalizada"]:
             )
 
             mensajes = client.beta.threads.messages.list(thread_id=st.session_state["thread_id"])
-            respuesta = mensajes.data[0].content[0].text.value
-            st.session_state["mensajes"].append(("agente", respuesta))
+                    
+                    # Buscar el último mensaje del asistente que tenga contenido de texto
+            respuesta = None
+                    for mensaje in mensajes.data:
+                        if mensaje.role == "assistant" and mensaje.content:
+                            respuesta = mensaje.content[0].text.value
+                            break
+                    
+                    if respuesta:
+                        st.session_state["mensajes"].append(("agente", respuesta))
+                    else:
+                        st.session_state["mensajes"].append(("agente", "⚠️ El asistente no entregó una respuesta. Intenta recargar."))
+
 
             # Finalizar si hay suficientes mensajes (ajustable)
             if len(st.session_state["mensajes"]) >= 6:
