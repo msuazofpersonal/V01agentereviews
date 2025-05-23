@@ -1,54 +1,73 @@
 import streamlit as st
 import openai
 
-# Inicializa OpenAI con secretos
+# Configuración
 openai.api_key = st.secrets["OPENAI_API_KEY"]
 assistant_id = st.secrets["ASSISTANT_ID"]
-
 client = openai.Client()
 
-# Crea o recupera el hilo de conversación
+# Inicializar estado
 if "thread_id" not in st.session_state:
     thread = client.beta.threads.create()
     st.session_state["thread_id"] = thread.id
-    st.session_state["mensajes"] = []  # para guardar el historial
+    st.session_state["mensajes"] = []
+    st.session_state["score"] = None
+    st.session_state["conversacion_finalizada"] = False
 
 st.title("🛍️ Agente de Reseñas de Productos")
 st.markdown("Por favor, completa los datos del cliente y el producto para comenzar:")
 
-# Inputs iniciales
-with st.form("datos_form"):
+# Formulario inicial
+with st.form("formulario"):
     nombre = st.text_input("Nombre del cliente:")
     url = st.text_input("URL del producto:")
     score = st.slider("Puntaje entregado (1 a 5 estrellas):", 1, 5, 5)
     submitted = st.form_submit_button("Iniciar conversación con el asistente")
 
 if submitted and nombre and url:
+    st.session_state["score"] = score
+    st.session_state["conversacion_finalizada"] = False
     mensaje_inicial = (
         f"{nombre} ha calificado el siguiente producto con {score} estrellas: {url}. "
         f"Como agente, ayúdalo a escribir una reseña completa. Haz preguntas breves, una a la vez, "
         f"para entender su experiencia y resaltar lo bueno del producto."
     )
 
-    # Envía mensaje inicial
     client.beta.threads.messages.create(
         thread_id=st.session_state["thread_id"],
         role="user",
         content=mensaje_inicial
     )
 
-    # Ejecuta el asistente
     run = client.beta.threads.runs.create_and_poll(
         thread_id=st.session_state["thread_id"],
         assistant_id=assistant_id
     )
 
-    # Muestra respuesta
     mensajes = client.beta.threads.messages.list(thread_id=st.session_state["thread_id"])
-    respuesta = mensajes.data[0].content[0].text.value
-    st.session_state["mensajes"].append(("agente", respuesta))
 
-# Mostrar historial de conversación
+    # 🧪 Mostrar todos los mensajes para depuración
+    st.info("🔍 Mensajes del asistente:")
+    for m in reversed(mensajes.data):
+        st.code(f"{m.role}: {m.content}", language="markdown")
+
+    # Obtener respuesta más reciente útil del asistente
+    respuesta = None
+    for mensaje in reversed(mensajes.data):
+        if mensaje.role == "assistant" and mensaje.content:
+            for item in mensaje.content:
+                if item.type == "text":
+                    respuesta = item.text.value
+                    break
+        if respuesta:
+            break
+
+    if respuesta:
+        st.session_state["mensajes"].append(("agente", respuesta))
+    else:
+        st.session_state["mensajes"].append(("agente", "⚠️ El asistente no entregó una respuesta. Intenta recargar."))
+
+# Mostrar historial
 st.markdown("---")
 st.subheader("🗣️ Conversación")
 
@@ -58,29 +77,62 @@ for rol, mensaje in st.session_state["mensajes"]:
     else:
         st.markdown(f"🧑 **Tú**: {mensaje}")
 
-# Campo de entrada continua
-user_input = st.text_input("Tu respuesta:", key="respuesta_input")
+# Entrada de respuesta del usuario
+if not st.session_state["conversacion_finalizada"]:
+    user_input = st.text_input("Tu respuesta:", key="respuesta_input")
 
-if st.button("Enviar respuesta"):
-    if user_input.strip() != "":
-        # Guarda mensaje del usuario
-        st.session_state["mensajes"].append(("usuario", user_input))
+    if st.button("Enviar respuesta"):
+        if user_input.strip() != "":
+            st.session_state["mensajes"].append(("usuario", user_input))
 
-        # Envia a OpenAI
-        client.beta.threads.messages.create(
-            thread_id=st.session_state["thread_id"],
-            role="user",
-            content=user_input
-        )
+            client.beta.threads.messages.create(
+                thread_id=st.session_state["thread_id"],
+                role="user",
+                content=user_input
+            )
 
-        run = client.beta.threads.runs.create_and_poll(
-            thread_id=st.session_state["thread_id"],
-            assistant_id=assistant_id
-        )
+            run = client.beta.threads.runs.create_and_poll(
+                thread_id=st.session_state["thread_id"],
+                assistant_id=assistant_id
+            )
 
-        mensajes = client.beta.threads.messages.list(thread_id=st.session_state["thread_id"])
-        respuesta = mensajes.data[0].content[0].text.value
-        st.session_state["mensajes"].append(("agente", respuesta))
+            mensajes = client.beta.threads.messages.list(thread_id=st.session_state["thread_id"])
 
-        # Recarga la página automáticamente para mostrar el nuevo input
-        st.experimental_rerun()
+            # 🧪 Mostrar todos los mensajes para depuración
+            st.info("🔍 Mensajes del asistente:")
+            for m in reversed(mensajes.data):
+                st.code(f"{m.role}: {m.content}", language="markdown")
+
+            # Obtener respuesta más reciente útil del asistente
+            respuesta = None
+            for mensaje in reversed(mensajes.data):
+                if mensaje.role == "assistant" and mensaje.content:
+                    for item in mensaje.content:
+                        if item.type == "text":
+                            respuesta = item.text.value
+                            break
+                if respuesta:
+                    break
+
+            if respuesta:
+                st.session_state["mensajes"].append(("agente", respuesta))
+            else:
+                st.session_state["mensajes"].append(("agente", "⚠️ El asistente no entregó una respuesta. Intenta recargar."))
+
+            if len(st.session_state["mensajes"]) >= 6:
+                st.session_state["conversacion_finalizada"] = True
+
+            st.markdown("ℹ️ Si no ves una nueva respuesta, puedes recargar la página manualmente.")
+
+# Cierre según score
+if st.session_state["conversacion_finalizada"]:
+    st.markdown("---")
+    st.subheader("✅ Conversación finalizada")
+
+    if st.session_state["score"] >= 4:
+        st.success("🎉 ¡Gracias por tu opinión! Será de mucha utilidad para otros usuarios. "
+                   "¡Esperamos que sigas disfrutando de tu producto!")
+    elif st.session_state["score"] <= 2:
+        st.error("😔 Lamentamos que tu experiencia no haya sido positiva. "
+                 "Tu opinión ha sido derivada a nuestro equipo de atención al cliente para ayudarte a resolver el problema.")
+
